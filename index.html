@@ -2,45 +2,36 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Explorateur EPCI</title>
-  <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Formulaire dynamique EPCI</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 30px;
-    }
-    select {
-      padding: 8px;
-      margin-bottom: 20px;
-      width: 300px;
-    }
-    ul {
-      padding-left: 20px;
-    }
+    body { font-family: Arial, sans-serif; padding: 2rem; }
+    select { display: block; margin-bottom: 1rem; padding: 0.5rem; font-size: 1rem; }
   </style>
 </head>
 <body>
   <div id="app">
-    <h1>🔍 Sélection dynamique EPCI</h1>
+    <h2>Formulaire dynamique</h2>
 
-    <label for="departement">Département :</label><br>
-    <select v-model="selectedDep" @change="loadEpci">
-      <option disabled value="">-- Sélectionner un département --</option>
+    <label for="departement">Département :</label>
+    <select v-model="selectedDep" @change="fetchEpci">
+      <option disabled value="">Sélectionner un département</option>
       <option v-for="dep in departements" :key="dep" :value="dep">{{ dep }}</option>
-    </select><br><br>
+    </select>
 
-    <label for="epci">EPCI :</label><br>
-    <select v-model="selectedEpci" @change="loadCommunes" :disabled="!epcis.length">
-      <option disabled value="">-- Sélectionner un EPCI --</option>
-      <option v-for="epci in epcis" :key="epci" :value="epci">{{ epci }}</option>
-    </select><br><br>
+    <label for="epci">EPCI :</label>
+    <select v-model="selectedEpci" @change="fetchCommunes">
+      <option disabled value="">Sélectionner un EPCI</option>
+      <option v-for="epci in epcis" :key="epci.code" :value="epci.code">{{ epci.nom }}</option>
+    </select>
 
-    <div v-if="communes.length">
-      <h3>🏘️ Communes :</h3>
-      <ul>
-        <li v-for="commune in communes" :key="commune">{{ commune }}</li>
-      </ul>
-    </div>
+    <label for="commune">Communes :</label>
+    <select>
+      <option disabled value="">Sélectionner une commune</option>
+      <option v-for="commune in communes" :key="commune.code" :value="commune.code">{{ commune.nom }}</option>
+    </select>
   </div>
 
   <script>
@@ -54,32 +45,27 @@
         communes: []
       },
       mounted() {
-        // Charger tous les départements disponibles
-        fetch("https://public.opendatasoft.com/api/records/1.0/search/?dataset=georef-france-epci-millesime&rows=0&facet=dep_name")
-          .then(res => res.json())
-          .then(data => {
-            this.departements = data.facet_groups[0].facets.map(f => f.name).sort();
+        axios.get('https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/georef-france-epci-millesime/records?where=year=2025&limit=10000')
+          .then(response => {
+            const records = response.data.results;
+            const deps = [...new Set(records.map(r => r.dep_name))];
+            this.departements = deps.sort();
           });
       },
       methods: {
-        loadEpci() {
+        fetchEpci() {
           this.epcis = [];
           this.communes = [];
-          this.selectedEpci = '';
-
-          fetch(`https://public.opendatasoft.com/api/records/1.0/search/?dataset=georef-france-epci-millesime&rows=0&refine.dep_name=${encodeURIComponent(this.selectedDep)}&facet=epci_name`)
-            .then(res => res.json())
-            .then(data => {
-              this.epcis = data.facet_groups[0].facets.map(f => f.name).sort();
+          axios.get(`https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/georef-france-epci-millesime/records?where=year=2025 AND dep_name='${this.selectedDep}'&limit=1000`)
+            .then(response => {
+              this.epcis = response.data.results.map(r => ({ code: r.epci_code, nom: r.epci_name }));
             });
         },
-        loadCommunes() {
+        fetchCommunes() {
           this.communes = [];
-
-          fetch(`https://public.opendatasoft.com/api/records/1.0/search/?dataset=georef-france-epci-millesime&rows=1000&refine.epci_name=${encodeURIComponent(this.selectedEpci)}`)
-            .then(res => res.json())
-            .then(data => {
-              this.communes = data.records.map(r => r.fields.nom_com).sort();
+          axios.get(`https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/georef-france-commune/records?where=epci_code='${this.selectedEpci}'&limit=1000`)
+            .then(response => {
+              this.communes = response.data.results.map(r => ({ code: r.commune_code, nom: r.commune_name }));
             });
         }
       }
