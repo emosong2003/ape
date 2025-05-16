@@ -2,99 +2,86 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Explorateur Entreprises</title>
+  <title>Explorateur EPCI</title>
   <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    select, input[type="date"] { display: block; margin: 10px 0; padding: 6px; width: 300px; }
-    fieldset { margin-bottom: 20px; }
-    legend { font-weight: bold; }
-    .checkbox-group { display: flex; flex-wrap: wrap; }
-    .checkbox-group label { width: 150px; }
-    button { padding: 8px 12px; }
-    pre { background: #f0f0f0; padding: 10px; }
+    body { font-family: Arial, sans-serif; padding: 30px; }
+    select { padding: 8px; margin-bottom: 20px; width: 300px; }
+    ul { padding-left: 20px; }
   </style>
 </head>
 <body>
   <div id="app">
-    <h2>Filtrez les entreprises</h2>
-    <fieldset>
-      <legend>1. Département</legend>
-      <select v-model="selectedDep" @change="loadEpcis" :disabled="departements.length===0">
-        <option disabled value="">-- Choisir un département --</option>
-        <option v-for="dep in departements" :key="dep" :value="dep">{{ dep }}</option>
-      </select>
-    </fieldset>
+    <h3>🔍 Sélection dynamique EPCI</h3>
 
-    <fieldset v-if="epcis.length">
-      <legend>2. EPCI (millésime 2025)</legend>
-      <select v-model="selectedEpci" @change="loadCommunes">
-        <option disabled value="">-- Choisir un EPCI --</option>
-        <option v-for="epci in epcis" :key="epci" :value="epci">{{ epci }}</option>
-      </select>
-    </fieldset>
+    <!-- Département -->
+    <label>Département :</label><br>
+    <select v-model="selectedDep" @change="loadEpcis">
+      <option disabled value="">⎯⎯ Sélectionner un département ⎯⎯</option>
+      <option v-for="dep in departements" :key="dep" :value="dep">{{ dep }}</option>
+    </select><br><br>
 
-    <fieldset v-if="communes.length">
-      <legend>3. Codes postaux (choix multiples)</legend>
-      <div class="checkbox-group">
-        <label v-for="cp in communes" :key="cp">
-          <input type="checkbox" :value="cp" v-model="selectedCP" /> {{ cp }}
-        </label>
-      </div>
-    </fieldset>
+    <!-- EPCI -->
+    <label>EPCI :</label><br>
+    <select v-model="selectedEpci" @change="loadCommunes" :disabled="epcis.length === 0">
+      <option disabled value="">⎯⎯ Sélectionner un EPCI ⎯⎯</option>
+      <option v-for="epci in epcis" :key="epci" :value="epci">{{ epci }}</option>
+    </select><br><br>
 
-    <!-- Autres champs du formulaire... -->
-
-    <button @click="buildQuery">Générer requête</button>
-    <pre v-if="requete">{{ requete }}</pre>
+    <!-- Communes -->
+    <div v-if="communes.length">
+      <h4>🏘 Communes :</h4>
+      <ul>
+        <li v-for="commune in communes" :key="commune">{{ commune }}</li>
+      </ul>
+    </div>
   </div>
 
   <script>
     const BASE = 'https://public.opendatasoft.com';
-    new Vue({ el: '#app', data: {
-        departements: [], epcis: [], communes: [],
-        selectedDep:'', selectedEpci:'', selectedCP:[], requete:'' },
+    new Vue({
+      el: '#app',
+      data: {
+        departements: [],
+        selectedDep: '',
+        epcis: [],
+        selectedEpci: '',
+        communes: []
+      },
       created() {
-        // Chargement des départements via facets
-        fetch(`${BASE}/api/v2/catalog/datasets/intercommunalites-millesimees/records?refine=millésime:2025&rows=0&facets=dep_name`)
-          .then(res=>res.json())
+        // Charger la liste des départements pour millésime 2025 via les facettes
+        fetch(`${BASE}/api/explore/v2.1/catalog/datasets/georef-france-epci-millesime/facets?refine=millésime:%222025-01-01%22&facet=dep_name&limit=0`)
+          .then(res => res.json())
           .then(data => {
-            const fg = data.facet_groups.find(g=>g.name==='dep_name');
-            this.departements = fg? fg.facets.map(f=>f.name).sort(): [];
+            const facet = data.facets.find(f => f.name === 'dep_name');
+            this.departements = facet ? facet.facets.map(d => d.name) : [];
           })
           .catch(err => console.error('Erreur chargement départements :', err));
       },
       methods: {
         loadEpcis() {
-          this.epcis=[]; this.selectedEpci=''; this.communes=[];
-          if(!this.selectedDep) return;
-          const dep = encodeURIComponent(this.selectedDep);
-          fetch(`${BASE}/api/v2/catalog/datasets/intercommunalites-millesimees/records?refine=millésime:2025&refine=dep_name:${dep}&rows=0&facets=epci_name`)
-            .then(res=>res.json())
+          this.epcis = [];
+          this.selectedEpci = '';
+          this.communes = [];
+          // Charger les EPCI du département sélectionné
+          fetch(`${BASE}/api/explore/v2.1/catalog/datasets/georef-france-epci-millesime/facets?refine=millésime:%222025-01-01%22&refine=dep_name:%22${encodeURIComponent(this.selectedDep)}%22&facet=epci_name&limit=0`)
+            .then(res => res.json())
             .then(data => {
-              const fg = data.facet_groups.find(g=>g.name==='epci_name');
-              this.epcis = fg? fg.facets.map(f=>f.name).sort(): [];
+              const facet = data.facets.find(f => f.name === 'epci_name');
+              this.epcis = facet ? facet.facets.map(e => e.name) : [];
             })
             .catch(err => console.error('Erreur chargement EPCI :', err));
         },
         loadCommunes() {
-          this.communes=[];
-          if(!this.selectedEpci) return;
-          const epci = encodeURIComponent(this.selectedEpci);
-          fetch(`${BASE}/api/v2/catalog/datasets/georef-france-commune/records?refine=epci_name:${epci}&rows=0&facets=code_postal`)  
-            .then(res=>res.json())
+          this.communes = [];
+          // Charger les communes de l'EPCI sélectionné
+          fetch(`${BASE}/api/explore/v2.1/catalog/datasets/georef-france-commune/facets?refine=epci_name:%22${encodeURIComponent(this.selectedEpci)}%22&facet=nom_commune&limit=0`)
+            .then(res => res.json())
             .then(data => {
-              const fg = data.facet_groups.find(g=>g.name==='code_postal');
-              this.communes = fg? fg.facets.map(f=>f.name).sort(): [];
+              const facet = data.facets.find(f => f.name === 'nom_commune');
+              this.communes = facet ? facet.facets.map(c => c.name) : [];
             })
-            .catch(err => console.error('Erreur chargement codes postaux :', err));
-        },
-        buildQuery() {
-          const parts = [];
-          if(this.selectedDep) parts.push(`dep_name='${this.selectedDep}'`);
-          if(this.selectedEpci) parts.push(`epci_name='${this.selectedEpci}'`);
-          if(this.selectedCP.length) parts.push(`codepostaletablissement IN ('${this.selectedCP.join("','")}')`);
-          this.requete = 'WHERE ' + parts.join(' AND ');
+            .catch(err => console.error('Erreur chargement communes :', err));
         }
       }
     });
