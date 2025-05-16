@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Explorateur EPCI</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 30px;
+    }
+    select {
+      padding: 8px;
+      margin-bottom: 20px;
+      width: 300px;
+    }
+    ul {
+      padding-left: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>🔍 Sélection dynamique EPCI</h1>
+
+    <label for="departement">Département :</label><br>
+    <select v-model="selectedDep" @change="loadEpci">
+      <option disabled value="">-- Sélectionner un département --</option>
+      <option v-for="dep in departements" :key="dep" :value="dep">{{ dep }}</option>
+    </select><br><br>
+
+    <label for="epci">EPCI :</label><br>
+    <select v-model="selectedEpci" @change="loadCommunes" :disabled="!epcis.length">
+      <option disabled value="">-- Sélectionner un EPCI --</option>
+      <option v-for="epci in epcis" :key="epci" :value="epci">{{ epci }}</option>
+    </select><br><br>
+
+    <div v-if="communes.length">
+      <h3>🏘️ Communes :</h3>
+      <ul>
+        <li v-for="commune in communes" :key="commune">{{ commune }}</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    new Vue({
+      el: '#app',
+      data: {
+        departements: [],
+        selectedDep: '',
+        epcis: [],
+        selectedEpci: '',
+        communes: []
+      },
+      mounted() {
+        // Charger tous les départements disponibles
+        fetch("https://public.opendatasoft.com/api/records/1.0/search/?dataset=georef-france-epci-millesime&rows=0&facet=dep_name")
+          .then(res => res.json())
+          .then(data => {
+            this.departements = data.facet_groups[0].facets.map(f => f.name).sort();
+          });
+      },
+      methods: {
+        loadEpci() {
+          this.epcis = [];
+          this.communes = [];
+          this.selectedEpci = '';
+
+          fetch(`https://public.opendatasoft.com/api/records/1.0/search/?dataset=georef-france-epci-millesime&rows=0&refine.dep_name=${encodeURIComponent(this.selectedDep)}&facet=epci_name`)
+            .then(res => res.json())
+            .then(data => {
+              this.epcis = data.facet_groups[0].facets.map(f => f.name).sort();
+            });
+        },
+        loadCommunes() {
+          this.communes = [];
+
+          fetch(`https://public.opendatasoft.com/api/records/1.0/search/?dataset=georef-france-epci-millesime&rows=1000&refine.epci_name=${encodeURIComponent(this.selectedEpci)}`)
+            .then(res => res.json())
+            .then(data => {
+              this.communes = data.records.map(r => r.fields.nom_com).sort();
+            });
+        }
+      }
+    });
+  </script>
+</body>
+</html>
