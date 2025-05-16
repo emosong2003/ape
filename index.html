@@ -54,11 +54,12 @@
         communes: []
       },
       created() {
-        fetch("https://public.opendatasoft.com/api/v2/catalog/datasets/georef-france-epci-millesime/records?select=dep_name&where=year=2025&group_by=dep_name&limit=100")
+        fetch("https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/georef-france-epci-millesime/records?limit=100&refine=year%3A%222025%22")
           .then(response => response.json())
           .then(data => {
+            if (!data.results) throw new Error("No results returned");
             const deps = [...new Set(data.results.map(item => item.dep_name).filter(Boolean))];
-            this.departements = deps;
+            this.departements = deps.sort();
           })
           .catch(error => console.error("Erreur chargement départements :", error));
       },
@@ -67,18 +68,24 @@
           this.epcis = [];
           this.selectedEpci = '';
           this.communes = [];
-          fetch(`https://public.opendatasoft.com/api/v2/catalog/datasets/georef-france-epci-millesime/records?where=year=2025 AND dep_name='${this.selectedDep}'&select=epci_name&group_by=epci_name&limit=1000`)
+          if (!this.selectedDep) return;
+
+          const encodedDep = encodeURIComponent(this.selectedDep);
+          fetch(`https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/georef-france-epci-millesime/records?limit=1000&refine=year%3A%222025%22&refine=dep_name%3A%22${encodedDep}%22`)
             .then(response => response.json())
             .then(data => {
-              this.epcis = data.results.map(r => r.epci_name);
+              this.epcis = [...new Set(data.results.map(r => r.epci_name).filter(Boolean))].sort();
             });
         },
         loadCommunes() {
           this.communes = [];
-          fetch(`https://public.opendatasoft.com/api/v2/catalog/datasets/georef-france-commune/records?where=epci_name='${this.selectedEpci}'&select=commune_name&limit=1000`)
+          if (!this.selectedEpci) return;
+
+          const encodedEpci = encodeURIComponent(this.selectedEpci);
+          fetch(`https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/georef-france-commune/records?limit=1000&refine=epci_name%3A%22${encodedEpci}%22`)
             .then(response => response.json())
             .then(data => {
-              this.communes = data.results.map(r => r.commune_name);
+              this.communes = [...new Set(data.results.map(r => r.commune_name).filter(Boolean))].sort();
             });
         }
       }
