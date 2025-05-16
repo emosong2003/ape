@@ -2,91 +2,174 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Explorateur EPCI</title>
+  <title>Explorateur Entreprises</title>
   <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 30px;
-    }
-    select {
-      padding: 8px;
-      margin-bottom: 20px;
-      width: 300px;
-    }
-    ul {
-      padding-left: 20px;
-    }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    select, input[type="date"] { margin: 8px 0; padding: 6px; width: 300px; }
+    fieldset { margin-bottom: 20px; }
+    legend { font-weight: bold; }
+    label { display: block; margin-top: 6px; }
+    .checkbox-group { display: flex; flex-wrap: wrap; }
+    .checkbox-group label { width: 150px; }
   </style>
 </head>
 <body>
   <div id="app">
-    <h3>🔍 Sélection dynamique EPCI</h3>
+    <h2>Filtrez les entreprises</h2>
+    <fieldset>
+      <legend>1. Département</legend>
+      <select v-model="selectedDep" @change="loadEpcis">
+        <option disabled value="">-- Choisir un département --</option>
+        <option v-for="dep in departements" :key="dep" :value="dep">{{ dep }}</option>
+      </select>
+    </fieldset>
 
-    <label for="departement">Département :</label><br>
-    <select v-model="selectedDep" @change="loadEpcis">
-      <option disabled value="">⎯⎯ Sélectionner un département ⎯⎯</option>
-      <option v-for="dep in departements" :key="dep" :value="dep">{{ dep }}</option>
-    </select><br><br>
+    <fieldset v-if="epcis.length">
+      <legend>2. EPCI (millésime 2025)</legend>
+      <select v-model="selectedEpci" @change="loadCommunes">
+        <option disabled value="">-- Choisir un EPCI --</option>
+        <option v-for="epci in epcis" :key="epci" :value="epci">{{ epci }}</option>
+      </select>
+    </fieldset>
 
-    <label for="epci">EPCI :</label><br>
-    <select v-model="selectedEpci" @change="loadCommunes" :disabled="epcis.length === 0">
-      <option disabled value="">⎯⎯ Sélectionner un EPCI ⎯⎯</option>
-      <option v-for="epci in epcis" :key="epci" :value="epci">{{ epci }}</option>
-    </select><br><br>
+    <fieldset v-if="communes.length">
+      <legend>3. Codes postaux (choix multiples)</legend>
+      <div class="checkbox-group">
+        <label v-for="cp in communes" :key="cp">
+          <input type="checkbox" :value="cp" v-model="selectedCP" /> {{ cp }}
+        </label>
+      </div>
+    </fieldset>
 
-    <div v-if="communes.length">
-      <h4>👨‍🌾 Communes :</h4>
-      <ul>
-        <li v-for="commune in communes" :key="commune">{{ commune }}</li>
-      </ul>
-    </div>
+    <fieldset>
+      <legend>4. Activité principale</legend>
+      <select v-model="selectedSection" @change="loadSousSections">
+        <option disabled value="">-- Section --</option>
+        <option v-for="sec in sections" :key="sec.code" :value="sec.code">{{ sec.code }} - {{ sec.label }}</option>
+      </select>
+      <select v-if="sousSections.length" v-model="selectedSousSection">
+        <option disabled value="">-- Sous-section --</option>
+        <option v-for="sub in sousSections" :key="sub.code" :value="sub.code">{{ sub.code }} - {{ sub.label }}</option>
+      </select>
+    </fieldset>
+
+    <fieldset v-if="selectedSousSection">
+      <legend>5. Codes APE (max 3)</legend>
+      <div class="checkbox-group">
+        <label v-for="ape in codesAPE" :key="ape">
+          <input type="checkbox" :value="ape" v-model="selectedAPE" :disabled="selectedAPE.length>=3 && !selectedAPE.includes(ape)" /> {{ ape }}
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>6. Statut établissement</legend>
+      <label><input type="radio" value="Actif" v-model="statut"/> Actif uniquement</label>
+      <label><input type="radio" value="Tous" v-model="statut"/> Tous</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>7. Type établissement</legend>
+      <label><input type="radio" value="siege" v-model="siegeOnly"/> Siège uniquement</label>
+      <label><input type="radio" value="all" v-model="siegeOnly"/> Tout</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>8. Artisan ou toutes</legend>
+      <label><input type="radio" value="artisan" v-model="artisanOnly"/> Artisan</label>
+      <label><input type="radio" value="all" v-model="artisanOnly"/> Tout</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>9. Tranche effectifs</legend>
+      <select v-model="selectedEffectif">
+        <option disabled value="">-- Choisir tranche --</option>
+        <option v-for="tr in effectifs" :key="tr.code" :value="tr.code">{{ tr.code }} - {{ tr.label }}</option>
+      </select>
+    </fieldset>
+
+    <fieldset>
+      <legend>10. Date création établissement</legend>
+      <label>De <input type="date" v-model="dateFrom"/></label>
+      <label>À <input type="date" v-model="dateTo"/></label>
+    </fieldset>
+
+    <button @click="buildQuery">Générer requête</button>
+
+    <pre v-if="requete">{{ requete }}</pre>
   </div>
 
   <script>
     new Vue({
       el: '#app',
       data: {
-        departements: [],
-        selectedDep: '',
-        epcis: [],
-        selectedEpci: '',
-        communes: []
+        departements: [], epcis: [], communes: [],
+        sections: [], sousSections: [], codesAPE: [],
+        effectifs: [
+          {code:'NN',label:'Unité non employeuse'},{code:'0',label:'0 salarié'},{code:'1',label:'1-2 salariés'},
+          /* ... */
+        ],
+        selectedDep:'', selectedEpci:'', selectedCP:[],
+        selectedSection:'', selectedSousSection:'', selectedAPE:[],
+        statut:'Actif', siegeOnly:'all', artisanOnly:'all',
+        selectedEffectif:'', dateFrom:'', dateTo:'', requete:''
       },
       created() {
-        fetch("https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/georef-france-epci-millesime/records?limit=100&refine=year%3A%222025%22")
-          .then(response => response.json())
-          .then(data => {
-            if (!data.results) throw new Error("No results returned");
-            const deps = [...new Set(data.results.map(item => item.dep_name).filter(Boolean))];
-            this.departements = deps.sort();
-          })
-          .catch(error => console.error("Erreur chargement départements :", error));
+        // 1. charger départements
+        fetch('/api/explore/v2.1/catalog/datasets/intercommunalites-millesimees/records?refine=millésime:2025&rows=0&facets=dep_name')
+          .then(r=>r.json()).then(d=>{
+            const grp=d.facet_groups.find(g=>g.name==='dep_name');
+            this.departements = grp? grp.facets.map(f=>f.name).sort():[];
+          });
+        // 4. charger sections / sous-sections NAF
+        // On peut tirer de economicref ou NAFListe statique
+        this.sections = [
+          {code:'47',label:'Commerce de détail'},
+          {code:'68',label:'Activités immobilières'}
+        ];
       },
-      methods: {
-        loadEpcis() {
-          this.epcis = [];
-          this.selectedEpci = '';
-          this.communes = [];
-          if (!this.selectedDep) return;
-
-          const encodedDep = encodeURIComponent(this.selectedDep);
-          fetch(`https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/georef-france-epci-millesime/records?limit=1000&refine=year%3A%222025%22&refine=dep_name%3A%22${encodedDep}%22`)
-            .then(response => response.json())
-            .then(data => {
-              this.epcis = [...new Set(data.results.map(r => r.epci_name).filter(Boolean))].sort();
+      methods:{
+        loadEpcis(){
+          this.epcis=[]; this.communes=[];
+          const dep=encodeURIComponent(this.selectedDep);
+          fetch(`/api/explore/v2.1/catalog/datasets/intercommunalites-millesimees/records?refine=millésime:2025&refine=dep_name:${dep}&rows=0&facets=epci_name`)
+            .then(r=>r.json()).then(d=>{
+              const g=d.facet_groups.find(g=>g.name==='epci_name');
+              this.epcis = g? g.facets.map(f=>f.name).sort():[];
             });
         },
-        loadCommunes() {
-          this.communes = [];
-          if (!this.selectedEpci) return;
-
-          const encodedEpci = encodeURIComponent(this.selectedEpci);
-          fetch(`https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/georef-france-commune/records?limit=1000&refine=epci_name%3A%22${encodedEpci}%22`)
-            .then(response => response.json())
-            .then(data => {
-              this.communes = [...new Set(data.results.map(r => r.commune_name).filter(Boolean))].sort();
+        loadCommunes(){
+          this.communes=[];
+          const epci=encodeURIComponent(this.selectedEpci);
+          fetch(`/api/explore/v2.1/catalog/datasets/georef-france-commune/records?refine=epci_name:${epci}&rows=0&facets=code_postal`)  
+            .then(r=>r.json()).then(d=>{
+              const g=d.facet_groups.find(g=>g.name==='code_postal');
+              this.communes = g? g.facets.map(f=>f.name).sort():[];
             });
+        },
+        loadSousSections(){
+          // stub sous-sections selon section
+          this.sousSections = [
+            {code:'47.11',label:'Commerce de gros de textiles'},
+            {code:'47.19',label:'Autres commerces de gros'}
+          ];
+        },
+        buildQuery(){
+          const parts = [];
+          parts.push(`etablissementsiege ${this.siegeOnly==='siege'?"= 'oui'":"IN ('oui','non')'"}`);
+          parts.push(`etatadministratifetablissement ${this.statut==='Actif'?"= 'Actif'":"IN ('Actif','Inactif')"}`);
+          if(this.selectedCP.length)
+            parts.push(`codepostaletablissement IN ('${this.selectedCP.join("','")}')`);
+          if(this.selectedAPE.length)
+            parts.push(`activiteprincipaleetablissement IN ('${this.selectedAPE.join("','")}')`);
+          if(this.selectedEffectif)
+            parts.push(`trancheeffectifsetablissement = '${this.selectedEffectif}'`);
+          if(this.dateFrom)
+            parts.push(`datecreationetablissement >= '${this.dateFrom}'`);
+          if(this.dateTo)
+            parts.push(`datecreationetablissement <= '${this.dateTo}'`);
+          this.requete = parts.join(' AND ');
         }
       }
     });
